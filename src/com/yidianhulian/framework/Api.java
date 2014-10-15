@@ -1,0 +1,232 @@
+package com.yidianhulian.framework;
+
+import java.io.BufferedReader;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import android.util.Log;
+
+public class Api {
+	public static final String BOUNDARY = "-----------AndroidFormBoundar7d4a6d158c9";
+
+
+	public static JSONObject post(String api, Map<String, String> queryStr) {
+		return Api.post(api, queryStr, null);
+	}
+	
+	public static Object getJSONValue(JSONObject json, String name){
+		if(json == null){
+			return null;
+		}
+		try {
+			return json.get(name);
+		} catch (JSONException e) {
+			return null;
+		}
+		
+	}
+	
+	public static String getStringValue(JSONObject json, String name){
+        Object o = Api.getJSONValue(json, name);
+        if(o==null)return null;
+        return String.valueOf(o);
+    }
+	
+	/**
+	 * 在明确知道返回值类型时使用
+	 * 
+	 * @param json
+	 * @param name
+	 * @param t
+	 * @return
+	 */
+	public static <T> T getJSONValue(JSONObject json, String name, Class<T> t){
+	    Object o = Api.getJSONValue(json, name);
+	    if(o==null)return null;
+	    
+	    try {
+    	    T o2 = (T)o;
+
+            return o2;
+          
+        } catch (Exception e1) {
+            return null;
+        }
+	}
+	
+	public static JSONObject post(String api, Map<String, String> queryStr,
+				List<String> files) {
+		JSONObject json = null;
+		boolean hasFile = false;
+		byte[] end_data = ("\r\n--" + BOUNDARY + "--\r\n").getBytes();
+		if (files != null) {
+			hasFile = true;
+		}
+		StringBuffer contentBuffer = new StringBuffer();
+		try {
+			URL postUrl = new URL(api);
+
+			queryStr.put("", "");
+			HttpURLConnection connection = (HttpURLConnection) postUrl
+					.openConnection();
+			connection.setDoOutput(true);
+			connection.setDoInput(true);
+			connection.setRequestMethod("POST");
+			connection.setUseCaches(false);
+			connection.setInstanceFollowRedirects(true);
+			if (hasFile) {
+				connection.setRequestProperty("Content-type",
+						"multipart/form-data; boundary=" + BOUNDARY);
+				connection.setRequestProperty("Charset", "UTF-8");
+			} else {
+				connection.setRequestProperty("Content-Type",
+						"application/x-www-form-urlencoded");
+			}
+
+			connection.connect();
+			DataOutputStream out = new DataOutputStream(connection.getOutputStream());
+
+			StringBuffer buffer = new StringBuffer();
+			Iterator<Entry<String, String>> iterator = queryStr.entrySet().iterator();
+			while (iterator.hasNext()) {
+				Entry<String, String> entry = iterator.next();
+				if (hasFile && files.contains(entry.getKey())) {
+					continue;
+				}
+				String value = entry.getValue();
+				
+
+				if (hasFile) {
+					buffer.append("--");
+					buffer.append(BOUNDARY);
+					buffer.append("\r\n");
+					buffer.append("Content-Disposition: form-data; name=\"");
+					buffer.append(entry.getKey());
+
+					buffer.append("\"\r\n\r\n");
+					buffer.append(value);
+					buffer.append("\r\n");
+				} else {
+					value = value != null ? URLEncoder.encode(value, "utf-8") : "";
+					buffer.append(entry.getKey()).append("=").append(value).append("&");
+				}
+			}
+			Log.d("post", api);
+			Log.d("post-data", buffer.toString());
+			if(hasFile){
+				out.writeUTF(buffer.toString());
+			}else{
+				out.writeBytes(buffer.toString());
+			}
+
+
+			if (hasFile) {
+				for (int i = 0; i < files.size(); i++) {
+					String fname = queryStr.get(files.get(i));
+					File file = new File(fname);
+					StringBuilder sb = new StringBuilder();
+					sb.append("--");
+					sb.append(BOUNDARY);
+					sb.append("\r\n");
+					sb.append("Content-Disposition: form-data; name=\"");
+					sb.append(files.get(i));
+					sb.append("\"; filename=\"");
+					sb.append(file.getName());
+					sb.append("\"\r\n");
+					sb.append("Content-Type: application/octet-stream\r\n\r\n");
+
+					out.write(sb.toString().getBytes());
+					DataInputStream in = new DataInputStream(new FileInputStream(file));
+					int bytes = 0;
+					byte[] bufferOut = new byte[1024];
+					while ((bytes = in.read(bufferOut)) != -1) {
+						out.write(bufferOut, 0, bytes);
+					}
+					out.write("\r\n".getBytes());
+					in.close();
+					
+				}
+				out.write(end_data);
+			}
+
+			out.flush();
+			out.close(); // flush and close
+
+			try{
+				BufferedReader reader = new BufferedReader(new InputStreamReader(
+						connection.getInputStream(), "utf-8"));
+				String inputLine = null;
+				
+				while ((inputLine = reader.readLine()) != null) {
+					contentBuffer.append(inputLine);
+				}
+			}catch(Exception e){
+				e.printStackTrace();
+			}finally {
+				connection.disconnect();
+			}
+			json = new JSONObject(contentBuffer.toString());
+		} catch (Exception e) {
+			Log.d("get-api-exception", contentBuffer.toString());
+			e.printStackTrace();
+		}
+		return json;
+	}
+
+	public static JSONObject get(String api, Map<String, String> queryStr) {
+		java.net.URL url;
+		JSONObject json = null;
+		StringBuffer contentBuffer = new StringBuffer();
+		try {
+			StringBuffer buffer = new StringBuffer();
+			Iterator<Entry<String, String>> iterator = queryStr.entrySet()
+					.iterator();
+			while (iterator.hasNext()) {
+				Entry<String, String> entry = iterator.next();
+				String value = entry.getValue();
+				if (value != null) {
+					value = URLEncoder.encode(value, "utf-8");
+				} else {
+					value = "";
+				}
+				buffer.append(entry.getKey()).append("=").append(value)
+						.append("&");
+			}
+
+			url = new java.net.URL(api + "?" + buffer);
+			Log.d("get", url.toString());
+			java.net.URLConnection conn = url.openConnection();
+			conn.connect();
+
+			java.io.InputStream is = conn.getInputStream();
+			java.io.BufferedReader reader = new java.io.BufferedReader(
+					new java.io.InputStreamReader(is, "UTF-8"));
+			String inputLine = null;
+			while ((inputLine = reader.readLine()) != null) {
+				contentBuffer.append(inputLine);
+			}
+			is.close();
+
+			json = new JSONObject(contentBuffer.toString());
+
+		} catch (Exception e) {
+			Log.d("get-api-exception", contentBuffer.toString());
+			e.printStackTrace();
+		}
+		return json;
+	}
+
+}
