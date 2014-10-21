@@ -5,6 +5,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -21,65 +22,39 @@ import android.util.Log;
 
 public class Api {
 	public static final String BOUNDARY = "-----------AndroidFormBoundar7d4a6d158c9";
-
-
-	public static JSONObject post(String api, Map<String, String> queryStr) {
-		return Api.post(api, queryStr, null);
-	}
+	private String mApi;
+	private Map<String, String> mQueryStr;
+	private List<String> mFiles;
+	private String mMethod;
 	
-	public static Object getJSONValue(JSONObject json, String name){
-		if(json == null){
-			return null;
-		}
-		try {
-			return json.get(name);
-		} catch (JSONException e) {
-			return null;
-		}
-		
-	}
 	
-	public static String getStringValue(JSONObject json, String name){
-        Object o = Api.getJSONValue(json, name);
-        if(o==null)return null;
-        return String.valueOf(o);
+	public Api(String method, String api, Map<String, String> queryStr, List<String> files){
+	    this.mApi = api;
+	    this.mQueryStr = queryStr;
+	    this.mFiles = files;
+	    this.mMethod = method;
+	}
+	public Api(String method, String api, Map<String, String> queryStr){
+        this(method, api, queryStr, null);
     }
 	
-	/**
-	 * 在明确知道返回值类型时使用
-	 * 
-	 * @param json
-	 * @param name
-	 * @param t
-	 * @return
-	 */
-	public static <T> T getJSONValue(JSONObject json, String name, Class<T> t){
-	    Object o = Api.getJSONValue(json, name);
-	    if(o==null)return null;
-	    
-	    try {
-    	    T o2 = (T)o;
-
-            return o2;
-          
-        } catch (Exception e1) {
-            return null;
-        }
+	public JSONObject invoke() throws NetworkException{
+	    if("get".equalsIgnoreCase(mMethod))return this.get();
+        return this.post();
 	}
-	
-	public static JSONObject post(String api, Map<String, String> queryStr,
-				List<String> files) {
+
+	public JSONObject post() throws NetworkException{
 		JSONObject json = null;
 		boolean hasFile = false;
 		byte[] end_data = ("\r\n--" + BOUNDARY + "--\r\n").getBytes();
-		if (files != null) {
+		if (mFiles != null) {
 			hasFile = true;
 		}
 		StringBuffer contentBuffer = new StringBuffer();
-		try {
-			URL postUrl = new URL(api);
+		try{
+			URL postUrl = new URL(mApi);
 
-			queryStr.put("", "");
+			mQueryStr.put("", "");
 			HttpURLConnection connection = (HttpURLConnection) postUrl
 					.openConnection();
 			connection.setDoOutput(true);
@@ -100,10 +75,10 @@ public class Api {
 			DataOutputStream out = new DataOutputStream(connection.getOutputStream());
 
 			StringBuffer buffer = new StringBuffer();
-			Iterator<Entry<String, String>> iterator = queryStr.entrySet().iterator();
+			Iterator<Entry<String, String>> iterator = mQueryStr.entrySet().iterator();
 			while (iterator.hasNext()) {
 				Entry<String, String> entry = iterator.next();
-				if (hasFile && files.contains(entry.getKey())) {
+				if (hasFile && mFiles.contains(entry.getKey())) {
 					continue;
 				}
 				String value = entry.getValue();
@@ -124,7 +99,7 @@ public class Api {
 					buffer.append(entry.getKey()).append("=").append(value).append("&");
 				}
 			}
-			Log.d("post", api);
+			Log.d("post", mApi);
 			Log.d("post-data", buffer.toString());
 			if(hasFile){
 				out.writeUTF(buffer.toString());
@@ -134,15 +109,15 @@ public class Api {
 
 
 			if (hasFile) {
-				for (int i = 0; i < files.size(); i++) {
-					String fname = queryStr.get(files.get(i));
+				for (int i = 0; i < mFiles.size(); i++) {
+					String fname = mQueryStr.get(mFiles.get(i));
 					File file = new File(fname);
 					StringBuilder sb = new StringBuilder();
 					sb.append("--");
 					sb.append(BOUNDARY);
 					sb.append("\r\n");
 					sb.append("Content-Disposition: form-data; name=\"");
-					sb.append(files.get(i));
+					sb.append(mFiles.get(i));
 					sb.append("\"; filename=\"");
 					sb.append(file.getName());
 					sb.append("\"\r\n");
@@ -178,36 +153,41 @@ public class Api {
 			}finally {
 				connection.disconnect();
 			}
-			json = new JSONObject(contentBuffer.toString());
-		} catch (Exception e) {
+            json = new JSONObject(contentBuffer.toString());
+		}catch(IOException ioe){
+		    throw new NetworkException(ioe);
+		}catch (Exception e) {
 			Log.d("get-api-exception", contentBuffer.toString());
 			e.printStackTrace();
 		}
 		return json;
 	}
 
-	public static JSONObject get(String api, Map<String, String> queryStr) {
+	public JSONObject get() throws NetworkException{
 		java.net.URL url;
 		JSONObject json = null;
 		StringBuffer contentBuffer = new StringBuffer();
+		StringBuffer buffer = new StringBuffer();
+        Iterator<Entry<String, String>> iterator = mQueryStr.entrySet()
+                .iterator();
+        while (iterator.hasNext()) {
+            Entry<String, String> entry = iterator.next();
+            String value = entry.getValue();
+            if (value != null) {
+                try {
+                    value = URLEncoder.encode(value, "utf-8");
+                }catch(Exception e){}
+            } else {
+                value = "";
+            }
+            buffer.append(entry.getKey()).append("=").append(value)
+                    .append("&");
+        }
+        
 		try {
-			StringBuffer buffer = new StringBuffer();
-			Iterator<Entry<String, String>> iterator = queryStr.entrySet()
-					.iterator();
-			while (iterator.hasNext()) {
-				Entry<String, String> entry = iterator.next();
-				String value = entry.getValue();
-				if (value != null) {
-					value = URLEncoder.encode(value, "utf-8");
-				} else {
-					value = "";
-				}
-				buffer.append(entry.getKey()).append("=").append(value)
-						.append("&");
-			}
-
-			url = new java.net.URL(api + "?" + buffer);
+			url = new java.net.URL(mApi+"?"+buffer);
 			Log.d("get", url.toString());
+			
 			java.net.URLConnection conn = url.openConnection();
 			conn.connect();
 
@@ -222,11 +202,62 @@ public class Api {
 
 			json = new JSONObject(contentBuffer.toString());
 
-		} catch (Exception e) {
+		} catch(IOException ioe){
+            throw new NetworkException(ioe);
+        }catch (Exception e) {
 			Log.d("get-api-exception", contentBuffer.toString());
 			e.printStackTrace();
 		}
 		return json;
 	}
 
+	//pragma static function
+	
+    public static Object getJSONValue(JSONObject json, String name){
+        if(json==null)return null;
+        try {
+            return json.get(name);
+        } catch (JSONException e) {
+            return null;
+        }
+        
+    }
+    
+    public static String getStringValue(JSONObject json, String name){
+        Object o = Api.getJSONValue(json, name);
+        if(o==null)return null;
+        return String.valueOf(o);
+    }
+    
+    /**
+     * 在明确知道返回值类型时使用
+     * 
+     * @param json
+     * @param name
+     * @param t
+     * @return
+     */
+    public static <T> T getJSONValue(JSONObject json, String name, Class<T> t){
+        Object o = Api.getJSONValue(json, name);
+        if(o==null)return null;
+        
+        try {
+            @SuppressWarnings("unchecked")
+            T o2 = (T)o;
+
+            return o2;
+          
+        } catch (Exception e1) {
+            return null;
+        }
+    }
+    
+    class NetworkException extends Exception{
+        private static final long serialVersionUID = 1L;
+
+        public NetworkException(Throwable throwable) {
+            super(throwable);
+        }
+        
+    }
 }

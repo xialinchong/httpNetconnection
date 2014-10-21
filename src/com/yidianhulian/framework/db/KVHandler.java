@@ -14,25 +14,33 @@ import android.provider.BaseColumns;
  *
  */
 public class KVHandler extends SQLiteOpenHelper {
-	private static final int DATABASE_VERSION = 2;
-    private static final String TABLE_NAME = "options";
-    private static final String TABLE_CREATE =
-                "CREATE TABLE " + TABLE_NAME + " (" +
-                		BaseColumns._ID + " INTEGER, " +
-                " name VARCHAR(45)," +
-                " value TEXT);";
-    private static final String UPGRADE_CREATE =
-            "CREATE TABLE " + TABLE_NAME + " (" +
-            		BaseColumns._ID + " INTEGER, " +
-            " name VARCHAR(45)," +
-            " value TEXT);";
+    private int DATABASE_VERSION = 0;
+    private String TABLE_NAME = "";
+    private String TABLE_CREATE = "";
+    private String UPGRADE_CREATE ="";
+    private SQLiteDatabase mDb;
     
 	public KVHandler(Context context, String name,
 			CursorFactory factory, int version) {
 		super(context, name, factory, version);
+		init(name, version);
+		mDb = getWritableDatabase();
 	}
 
-	@Override
+	protected void init(String dbname, int version) {
+	    DATABASE_VERSION = version;
+	    TABLE_NAME = dbname;
+	    TABLE_CREATE ="CREATE TABLE " + TABLE_NAME + " (" +
+	                        BaseColumns._ID + " INTEGER, " +
+	                " name VARCHAR(45)," +
+	                " value TEXT);";
+	    UPGRADE_CREATE ="CREATE TABLE " + TABLE_NAME + " (" +
+	                    BaseColumns._ID + " INTEGER, " +
+	            " name VARCHAR(45)," +
+	            " value TEXT);";
+    }
+
+    @Override
 	public void onCreate(SQLiteDatabase db) {
 		 db.execSQL(TABLE_CREATE);
 	}
@@ -45,7 +53,13 @@ public class KVHandler extends SQLiteOpenHelper {
 	}
 
 	
-	/**
+	@Override
+    public synchronized void close() {
+        super.close();
+        if(mDb !=null && mDb.isOpen()) mDb.close();
+    }
+
+    /**
 	 * 返回name的所有的值
 	 * 
 	 * @param context
@@ -53,37 +67,36 @@ public class KVHandler extends SQLiteOpenHelper {
 	 * @return
 	 */
 	public String getValue(String name){
-		SQLiteDatabase db = getReadableDatabase();
-		Cursor cursor = db.query(TABLE_NAME, new String[]{BaseColumns._ID, "name","value"}, "name=?", new String[]{name}, null, null, null);
+		Cursor cursor = mDb.query(TABLE_NAME, new String[]{BaseColumns._ID, "name","value"}, "name=?", new String[]{name}, null, null, null);
 		
 		String value=null;
 		while (cursor.moveToNext()) {  
 			value = cursor.getString(cursor.getColumnIndex("value"));  
         }
 		cursor.close();
-		db.close();
+		
 		return value;
 	}
 	
 	/**
-	 * 增加一个name的value
+	 * 增加一个name的value,如果name存在，则更新
 	 * 
 	 * @param context
 	 * @param name
 	 * @param value
 	 */
 	public void setValue(String name, String value){
-
+	    
+	    ContentValues cv = new ContentValues();
+        cv.put("value", value);
+        cv.put("name", name);
+        
 		String existValue = getValue(name);
 		if(existValue!=null){
+		    mDb.update(TABLE_NAME, cv, "name=?", new String[]{name});
 			return;
 		}
 		
-		SQLiteDatabase wdb = getWritableDatabase();
-		ContentValues cv = new ContentValues();
-		cv.put("value", value);
-		cv.put("name", name);
-    	wdb.insert(TABLE_NAME, null, cv);
-		wdb.close();
+		mDb.insert(TABLE_NAME, null, cv);
 	}
 }

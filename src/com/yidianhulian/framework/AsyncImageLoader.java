@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import android.app.Activity;
+import android.content.Context;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Handler;
@@ -18,18 +19,18 @@ public class AsyncImageLoader {
 	protected static final int LOADED_DIRECT = 0;
 	protected static final int LOADED_CALLBACK = 1;
 	private HashMap<String, SoftReference<Drawable>> imageCache;
-	private Activity activity;
+	private Context mContext;
 	private static AsyncImageLoader self;
 	
 	private AsyncImageLoader() {
 		imageCache = new HashMap<String, SoftReference<Drawable>>();
 	}
 	
-	public static AsyncImageLoader getInstance(Activity activity){
+	public static AsyncImageLoader getInstance(Context context){
 		if(self == null){
 			self = new AsyncImageLoader();
 		}
-		self.activity = activity;
+		self.mContext = context;
 		return self;
 	}
 	
@@ -55,8 +56,8 @@ public class AsyncImageLoader {
 		try {
 			u = new URL(url);
 			i = (InputStream) u.getContent();
-			d = new BitmapDrawable(activity.getResources(), i);
-			d.setTargetDensity(activity.getResources().getDisplayMetrics());
+			d = new BitmapDrawable(mContext.getResources(), i);
+			d.setTargetDensity(mContext.getResources().getDisplayMetrics());
 			i.close();
 			
 		} catch (Exception e) {
